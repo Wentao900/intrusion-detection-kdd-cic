@@ -17,6 +17,12 @@ import os
 os.environ["QUICK_RUN"] = "true"  # 1/5 抽样，快速验证
 ```
 
+### CIC 数据下载说明
+
+旧版 AWS 单文件链接已 **404**。本项目改为下载 UNB 官方 **`MachineLearningCSV.zip`**（约 224 MB）并自动解压，首次 Colab 运行约 5–15 分钟（视网络而定）。
+
+若自动下载失败，请从 [CIC IDS 2017 官网](https://www.unb.ca/cic/datasets/ids-2017.html) 手动下载 zip，放到 `data/cache/cic_raw/MachineLearningCSV.zip` 后重新运行。
+
 ### Drive 缓存
 
 笔记本会挂载 Google Drive，将 `data/cache/` 与 `artifacts/` 存到 Drive，避免重复下载 CIC。

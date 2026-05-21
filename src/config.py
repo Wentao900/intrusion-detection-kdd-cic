@@ -49,7 +49,16 @@ CNN_PATIENCE = 3
 # Metrics
 LATENCY_SAMPLE_SIZE = 5_000 if QUICK_RUN else 10_000
 
-# CIC CSV filenames (UNB ISCX naming)
+# CIC-IDS-2017 download (AWS S3 mirror removed — use UNB zip)
+# Official CIC host; zip contains all day CSVs (~224 MB)
+CIC_ZIP_URLS = [
+    "http://205.174.165.80/CICDataset/CIC-IDS-2017/Dataset/MachineLearningCSV.zip",
+    "http://205.174.165.80/CICDataset/CIC-IDS-2017/Dataset/CIC-IDS-2017/CSVs/MachineLearningCSV.zip",
+]
+CIC_ZIP_FILENAME = "MachineLearningCSV.zip"
+CIC_EXTRACT_DIR_NAME = "MachineLearningCSV"
+
+# Expected CSV basename patterns inside the zip (used for logging only)
 CIC_CSV_FILES = [
     "Monday-WorkingHours.pcap_ISCX.csv",
     "Tuesday-WorkingHours.pcap_ISCX.csv",
@@ -61,13 +70,5 @@ CIC_CSV_FILES = [
     "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv",
 ]
 
-# Minimum subset if full download fails
-CIC_MINIMAL_FILES = [
-    "Monday-WorkingHours.pcap_ISCX.csv",
-    "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv",
-]
-
-# CIC download mirror (AWS Open Data - common Colab mirror)
-CIC_BASE_URL = (
-    "https://cse-cic-ids2017.s3.us-east-2.amazonaws.com/MachineLearningCSV"
-)
+# Deprecated per-file AWS base (404) — kept empty for backward compat
+CIC_BASE_URL = ""

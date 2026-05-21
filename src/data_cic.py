@@ -1,8 +1,10 @@
-"""CIC-IDS-2017 chunked download, load, and stratified sampling."""
+"""CIC-IDS-2017 download (UNB zip), extract, chunked load, and stratified sampling."""
 
 from __future__ import annotations
 
 import json
+import shutil
+import zipfile
 import urllib.request
 from pathlib import Path
 
@@ -11,15 +13,144 @@ import pandas as pd
 
 from src.config import (
     CACHE_DIR,
-    CIC_BASE_URL,
     CIC_CHUNK_SIZE,
-    CIC_CSV_FILES,
-    CIC_MINIMAL_FILES,
+    CIC_EXTRACT_DIR_NAME,
     CIC_MISSING_COL_THRESHOLD,
     CIC_PER_CLASS_CAP,
     CIC_SAMPLE_SIZE,
+    CIC_ZIP_FILENAME,
+    CIC_ZIP_URLS,
     RANDOM_STATE,
 )
+
+# Browser-like UA — some mirrors reject default urllib UA
+_DOWNLOAD_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; CIC-IDS-2017-research/1.0)",
+}
+
+
+def _download_url(url: str, dest: Path, timeout: int = 600) -> None:
+    """Download file with urllib and progress logging."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    req = urllib.request.Request(url, headers=_DOWNLOAD_HEADERS)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        total = int(resp.headers.get("Content-Length", 0))
+        downloaded = 0
+        chunk_size = 1024 * 1024
+        with open(dest, "wb") as f:
+            while True:
+                chunk = resp.read(chunk_size)
+                if not chunk:
+                    break
+                f.write(chunk)
+                downloaded += len(chunk)
+                if total > 0 and downloaded % (10 * chunk_size) < chunk_size:
+                    pct = 100 * downloaded / total
+                    print(f"  ... {downloaded // (1024*1024)} MB ({pct:.0f}%)")
+
+
+def download_cic_zip(data_dir: Path | None = None) -> Path:
+    """
+    Download MachineLearningCSV.zip from UNB CIC mirror.
+
+    The old AWS S3 per-file URLs return 404; the official distribution is a
+    single zip archive (~224 MB).
+    """
+    data_dir = data_dir or (CACHE_DIR / "cic_raw")
+    data_dir.mkdir(parents=True, exist_ok=True)
+    zip_path = data_dir / CIC_ZIP_FILENAME
+
+    if zip_path.exists() and zip_path.stat().st_size > 1_000_000:
+        print(f"Using cached zip: {zip_path}")
+        return zip_path
+
+    last_err: Exception | None = None
+    for url in CIC_ZIP_URLS:
+        try:
+            print(f"Downloading CIC zip from {url} ...")
+            _download_url(url, zip_path)
+            if zip_path.stat().st_size > 1_000_000:
+                print(f"Saved {zip_path} ({zip_path.stat().st_size // (1024*1024)} MB)")
+                return zip_path
+        except Exception as e:
+            last_err = e
+            print(f"Failed: {e}")
+            if zip_path.exists():
+                zip_path.unlink(missing_ok=True)
+
+    raise FileNotFoundError(
+        "Could not download CIC-IDS-2017 MachineLearningCSV.zip. "
+        f"Tried: {CIC_ZIP_URLS}. Last error: {last_err}. "
+        "Manual fix: download the zip from https://www.unb.ca/cic/datasets/ids-2017.html "
+        f"and place it at {zip_path}"
+    ) from last_err
+
+
+def extract_cic_zip(zip_path: Path, data_dir: Path | None = None) -> Path:
+    """Extract zip and return directory containing CSV files."""
+    data_dir = data_dir or zip_path.parent
+    extract_root = data_dir / CIC_EXTRACT_DIR_NAME
+    marker = extract_root / ".extracted_ok"
+
+    if marker.exists():
+        csvs = list(extract_root.rglob("*.csv"))
+        if csvs:
+            return extract_root
+
+    print(f"Extracting {zip_path.name} ...")
+    if extract_root.exists():
+        shutil.rmtree(extract_root)
+    extract_root.mkdir(parents=True, exist_ok=True)
+
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        zf.extractall(extract_root)
+
+    csvs = list(extract_root.rglob("*.csv"))
+    if not csvs:
+        raise RuntimeError(f"No CSV files found after extracting {zip_path}")
+
+    marker.write_text(json.dumps([str(p) for p in csvs[:20]], indent=2))
+    print(f"Extracted {len(csvs)} CSV file(s) under {extract_root}")
+    return extract_root
+
+
+def discover_cic_csv_files(extract_root: Path) -> list[Path]:
+    """Find all day CSVs inside extracted tree (skip tiny/merged summary files)."""
+    csvs = sorted(extract_root.rglob("*.csv"))
+    # Prefer per-day ISCX files; skip very small files (< 1 MB)
+    day_csvs = [p for p in csvs if p.stat().st_size > 1_000_000]
+    if not day_csvs:
+        day_csvs = csvs
+    return day_csvs
+
+
+def download_cic_files(
+    data_dir: Path | None = None,
+    files: list[str] | None = None,
+    use_minimal_on_fail: bool = True,
+) -> list[Path]:
+    """
+    Download and extract CIC-IDS-2017, return list of CSV paths.
+
+    ``files`` is ignored (kept for API compat) — all CSVs in the zip are used.
+    """
+    data_dir = data_dir or (CACHE_DIR / "cic_raw")
+    zip_path = download_cic_zip(data_dir)
+    extract_root = extract_cic_zip(zip_path, data_dir)
+    discovered = discover_cic_csv_files(extract_root)
+
+    if files:
+        # Optional filter by basename (case-insensitive)
+        want = {f.lower() for f in files}
+        filtered = [p for p in discovered if p.name.lower() in want]
+        if filtered:
+            discovered = filtered
+
+    if not discovered:
+        raise FileNotFoundError(f"No CSV files under {extract_root}")
+
+    print("CIC CSV files:", [p.name for p in discovered])
+    return discovered
 
 
 def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -42,35 +173,6 @@ def _clean_chunk(chunk: pd.DataFrame) -> pd.DataFrame:
                 chunk = chunk.rename(columns={c: "Label"})
                 break
     return chunk
-
-
-def download_cic_files(
-    data_dir: Path | None = None,
-    files: list[str] | None = None,
-    use_minimal_on_fail: bool = True,
-) -> list[Path]:
-    """Download CIC CSV files from AWS mirror."""
-    data_dir = data_dir or (CACHE_DIR / "cic_raw")
-    data_dir.mkdir(parents=True, exist_ok=True)
-    files = files or CIC_CSV_FILES
-    downloaded: list[Path] = []
-
-    for fname in files:
-        dest = data_dir / fname
-        if dest.exists() and dest.stat().st_size > 1000:
-            downloaded.append(dest)
-            continue
-        url = f"{CIC_BASE_URL}/{fname}"
-        try:
-            print(f"Downloading {fname}...")
-            urllib.request.urlretrieve(url, dest)
-            downloaded.append(dest)
-        except Exception as e:
-            print(f"Failed {fname}: {e}")
-
-    if not downloaded and use_minimal_on_fail:
-        return download_cic_files(data_dir, CIC_MINIMAL_FILES, use_minimal_on_fail=False)
-    return downloaded
 
 
 def _stratified_sample_indices(labels: pd.Series, target_size: int, per_class_cap: int) -> np.ndarray:
@@ -110,15 +212,17 @@ def load_cic_chunked(
         meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
         return df, meta
 
-    data_dir = CACHE_DIR / "cic_raw"
     if csv_paths is None:
-        csv_paths = download_cic_files(data_dir)
+        csv_paths = download_cic_files()
     if not csv_paths:
-        raise FileNotFoundError("No CIC CSV files available. Run download on Colab with network.")
+        raise FileNotFoundError(
+            "No CIC CSV files available. Download MachineLearningCSV.zip on Colab with network."
+        )
 
     collected: list[pd.DataFrame] = []
     for path in csv_paths:
         try:
+            print(f"Reading {path.name} ...")
             for chunk in pd.read_csv(path, chunksize=CIC_CHUNK_SIZE, low_memory=False):
                 chunk = _clean_chunk(chunk)
                 if "Label" in chunk.columns:
@@ -134,13 +238,11 @@ def load_cic_chunked(
     full = pd.concat(collected, ignore_index=True)
     full = _normalize_columns(full)
 
-    # Drop high-missing columns
     miss_rate = full.isna().mean()
     drop_cols = miss_rate[miss_rate > CIC_MISSING_COL_THRESHOLD].index.tolist()
     drop_cols = [c for c in drop_cols if c != "Label"]
     full = full.drop(columns=drop_cols, errors="ignore")
 
-    # Numeric downcast
     for col in full.select_dtypes(include=[np.number]).columns:
         full[col] = pd.to_numeric(full[col], downcast="float")
 
@@ -156,6 +258,7 @@ def load_cic_chunked(
         "files_used": [p.name for p in csv_paths],
         "class_distribution": sampled["Label"].value_counts().to_dict(),
         "dropped_high_missing_cols": drop_cols,
+        "download_source": "UNB MachineLearningCSV.zip",
     }
 
     cache_path.parent.mkdir(parents=True, exist_ok=True)
