@@ -12,10 +12,11 @@ from sklearn.feature_selection import mutual_info_classif
 
 from src.config import ARTIFACTS_DIR, RANDOM_STATE
 from src.features_meta import KDD_FEATURE_GROUPS, CIC_FEATURE_GROUPS
+from src.plot_style import plot_text, setup_plot_font
 from src.preprocess import imbalance_ratio
 
-plt.rcParams["font.sans-serif"] = ["Arial Unicode MS", "SimHei", "DejaVu Sans"]
-plt.rcParams["axes.unicode_minus"] = False
+# Configure font once at import (Colab: may apt-install Noto CJK)
+setup_plot_font()
 
 
 def plot_class_distribution(
@@ -29,8 +30,8 @@ def plot_class_distribution(
     sns.barplot(x=counts.index, y=counts.values, ax=ax)
     ax.set_yscale("log")
     ax.set_title(title)
-    ax.set_xlabel("类别")
-    ax.set_ylabel("样本数 (log)")
+    ax.set_xlabel(plot_text("class"))
+    ax.set_ylabel(plot_text("count_log"))
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
     fig.savefig(out_path, dpi=120)
@@ -44,9 +45,9 @@ def plot_feature_group_pie(
 ) -> None:
     """Pie chart of feature group proportions."""
     sizes = [len(v) for v in groups.values()]
-    labels = list(groups.keys())
+    pie_labels = list(groups.keys())
     fig, ax = plt.subplots(figsize=(7, 7))
-    ax.pie(sizes, labels=labels, autopct="%1.1f%%", startangle=140)
+    ax.pie(sizes, labels=pie_labels, autopct="%1.1f%%", startangle=140)
     ax.set_title(title)
     plt.tight_layout()
     fig.savefig(out_path, dpi=120)
@@ -109,12 +110,12 @@ def run_eda_kdd(
 
     plot_class_distribution(
         df["label_category"],
-        "KDD Cup 1999 攻击类别分布",
+        plot_text("kdd_class_title"),
         out_dir / "class_distribution.png",
     )
     plot_feature_group_pie(
         KDD_FEATURE_GROUPS,
-        "KDD 41维特征分组占比",
+        plot_text("kdd_pie_title"),
         out_dir / "feature_groups.png",
     )
 
@@ -134,12 +135,12 @@ def run_eda_cic(df: pd.DataFrame) -> dict:
 
     plot_class_distribution(
         df["Label"],
-        "CIC-IDS-2017 攻击类别分布",
+        plot_text("cic_class_title"),
         out_dir / "class_distribution.png",
     )
     plot_feature_group_pie(
         CIC_FEATURE_GROUPS,
-        "CIC 特征分组占比（近似）",
+        plot_text("cic_pie_title"),
         out_dir / "feature_groups.png",
     )
 
@@ -181,8 +182,8 @@ def plot_confusion_matrix(
         ax=ax,
     )
     ax.set_title(title)
-    ax.set_ylabel("真实")
-    ax.set_xlabel("预测")
+    ax.set_ylabel(plot_text("true"))
+    ax.set_xlabel(plot_text("pred"))
     plt.tight_layout()
     fig.savefig(out_path, dpi=120)
     plt.close(fig)
