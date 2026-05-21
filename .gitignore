@@ -1,4 +1,6 @@
-data/
+data/*
+!data/bundled/
+!data/bundled/**
 artifacts/*.json
 artifacts/**/*.png
 !artifacts/.gitkeep
@@ -7,4 +9,5 @@ __pycache__/
 .ipynb_checkpoints/
 .DS_Store
 *.parquet
+!data/bundled/cic_fallback_sample.parquet
 .env

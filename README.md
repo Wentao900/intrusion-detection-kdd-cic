@@ -17,11 +17,23 @@ import os
 os.environ["QUICK_RUN"] = "true"  # 1/5 抽样，快速验证
 ```
 
-### CIC 数据下载说明
+### CIC 数据下载（Colab 推荐，无需本机、无需 224MB zip）
 
-旧版 AWS 单文件链接已 **404**。本项目改为下载 UNB 官方 **`MachineLearningCSV.zip`**（约 224 MB）并自动解压，首次 Colab 运行约 5–15 分钟（视网络而定）。
+| 模式 | 环境变量 | 说明 |
+|------|----------|------|
+| **hf_minimal**（默认） | `CIC_DOWNLOAD_MODE=hf_minimal` | 从 Hugging Face 拉 **3 个按日 parquet**，合计约 **55 MB**，真实 CIC 数据 |
+| hf_one | `CIC_DOWNLOAD_MODE=hf_one` | 只拉 1 天（约 17 MB），配合 `QUICK_RUN=true` 调试 |
+| drive | 上传到 Drive | 将 `cic_sample.parquet` 或 zip 放到 `MyDrive/CIC-IDS-2017/` |
+| zip | `CIC_DOWNLOAD_MODE=zip` | UNB 官方 224MB zip（网络好时用） |
+| bundled | 自动兜底 | 仓库内置 1.7MB 样本，**仅跑通流程**，报告需注明 |
 
-若自动下载失败，请从 [CIC IDS 2017 官网](https://www.unb.ca/cic/datasets/ids-2017.html) 手动下载 zip，放到 `data/cache/cic_raw/MachineLearningCSV.zip` 后重新运行。
+Colab 笔记本第 1 格可设置：
+
+```python
+import os
+os.environ["CIC_DOWNLOAD_MODE"] = "hf_minimal"  # 推荐
+# os.environ["QUICK_RUN"] = "true"              # 调试：更小样本 + 只下 1 天 HF
+```
 
 ### Drive 缓存
 
