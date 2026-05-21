@@ -426,7 +426,10 @@ def load_cic_chunked(
 
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(cache_path, index=False)
-    meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), default=str)
+    meta_path.write_text(
+        json.dumps(meta, indent=2, ensure_ascii=False, default=str),
+        encoding="utf-8",
+    )
     print(f"Cached CIC to {cache_path}")
     return df, meta
 
